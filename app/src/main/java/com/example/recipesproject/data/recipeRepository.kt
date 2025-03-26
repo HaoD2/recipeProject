@@ -5,6 +5,7 @@ import com.example.recipesproject.data.RecipeDao
 import kotlinx.coroutines.flow.Flow
 
 class RecipeRespository (private val recipeDao: RecipeDao) {
+
     suspend fun insertRecipe(recipeModel: RecipeModel) {
         recipeDao.insertRecipe(recipeModel)
     }

@@ -1,6 +1,7 @@
 package com.example.recipesproject
 
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Image
@@ -68,9 +69,14 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.example.recipesproject.data.AppDatabase
 import com.example.recipesproject.ui.theme.RecipesProjectTheme
 import com.example.recipesproject.viewmodel.RecipeViewModel
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -79,6 +85,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             NavigationApp()
         }
+
     }
 }
 

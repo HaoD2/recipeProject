@@ -5,6 +5,10 @@ import androidx.room.Room
 import com.example.recipesproject.data.AppDatabase
 import com.example.recipesproject.data.RecipeDao
 import com.example.recipesproject.data.RecipeRespository
+import com.example.recipesproject.data.UsersDao
+import com.example.recipesproject.data.UsersRepository
+
+
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -23,7 +27,9 @@ object AppModule {
             context,
             AppDatabase::class.java,
             "recipe_database"
-        ).build()
+        )
+            .fallbackToDestructiveMigration() // 🔥 Tambahkan ini!
+            .build()
     }
 
     @Provides
@@ -36,5 +42,18 @@ object AppModule {
     @Singleton
     fun provideRecipeRepository(recipeDao: RecipeDao): RecipeRespository {
         return RecipeRespository(recipeDao)
+    }
+
+    // 🆕 Tambahkan UserDao dan UsersRepository
+    @Provides
+    @Singleton
+    fun provideUserDao(database: AppDatabase): UsersDao {
+        return database.usersDao() // Sesuai dengan nama fungsi di AppDatabase
+    }
+
+    @Provides
+    @Singleton
+    fun provideUserRepository(usersDao: UsersDao): UsersRepository {
+        return UsersRepository(usersDao)
     }
 }
