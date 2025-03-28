@@ -1,5 +1,7 @@
-package com.example.recipesproject
+package com.example.recipeprojectv2
 
+import android.app.DatePickerDialog
+import android.content.Context
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -35,6 +37,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -48,7 +51,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -58,35 +63,57 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import com.example.recipesproject.data.AppDatabase
-import com.example.recipesproject.ui.theme.RecipesProjectTheme
-import com.example.recipesproject.viewmodel.RecipeViewModel
+import androidx.work.Constraints
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
+import com.example.recipeprojectv2.data.InventoryWorker
+import com.example.recipeprojectv2.model.InventoryModel
+import com.example.recipeprojectv2.model.RecipeModel
+import com.example.recipeprojectv2.model.ShoppingModel
+import com.example.recipeprojectv2.ui.theme.RecipeProjectv2Theme
+import com.example.recipeprojectv2.utils.JsonUtil
+import com.example.recipeprojectv2.viewmodel.InventoryViewModel
+import com.example.recipeprojectv2.viewmodel.ShoppingViewModel
 import dagger.hilt.android.AndroidEntryPoint
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.toList
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import java.text.SimpleDateFormat
+import java.time.LocalDate
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
+import java.util.concurrent.TimeUnit
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Log.d("DatabaseDebug", "Database path: " + applicationContext.getDatabasePath("app_database"))
+        scheduleInventoryCheck(this)
         setContent {
             NavigationApp()
         }
 
     }
+}
+
+fun scheduleInventoryCheck(context: Context) {
+    Log.d("WorkManagerDebug", "scheduleInventoryCheck DIPANGGIL")
+    val workRequest = OneTimeWorkRequestBuilder<InventoryWorker>().build()
+    WorkManager.getInstance(context).enqueue(workRequest)
 }
 
 @Composable
@@ -144,10 +171,11 @@ fun BottomNavigationBar(navController: NavHostController) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun InventoryScreen() {
+fun InventoryScreen(viewModel: InventoryViewModel = hiltViewModel()) {
     var searchText by remember { mutableStateOf("") }
     var showAddDialog by remember { mutableStateOf(false) }
-    val inventoryList = remember { mutableStateListOf<String>() }
+
+    val inventoryList by viewModel.filteredInventory.collectAsState()
 
     Scaffold(
         topBar = {
@@ -155,7 +183,206 @@ fun InventoryScreen() {
                 title = {
                     OutlinedTextField(
                         value = searchText,
-                        onValueChange = { searchText = it },
+                        onValueChange = {
+                            searchText = it
+                            viewModel.updateSearchQuery(it) // Update ViewModel dengan teks pencarian
+                        },
+                        placeholder = { Text("Search...") },
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search Icon") },
+                        modifier = Modifier.fillMaxWidth(0.9f),
+                        singleLine = true,
+                        shape = RoundedCornerShape(16.dp)
+                    )
+                }
+            )
+        },
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = { showAddDialog = true }, // Dialog tetap muncul
+                containerColor = MaterialTheme.colorScheme.primary
+            ) {
+                Icon(Icons.Default.Add, contentDescription = "Add Item")
+            }
+        }
+    ) { innerPadding ->
+        Box(modifier = Modifier.padding(innerPadding)) {
+            if (inventoryList.isEmpty()) {
+                Text("No items found", modifier = Modifier.align(Alignment.Center))
+            } else {
+                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    items(inventoryList) { item ->
+                        InventoryCardWithCountdown(item)
+                    }
+                }
+            }
+        }
+    }
+
+    // Dialog untuk menambah item tetap ada
+    if (showAddDialog) {
+        AddInventoryButton(
+            onDismiss = { showAddDialog = false },
+            onAdd = { name, category, quantity, expire ->
+                viewModel.insert(
+                    InventoryModel(
+                        name = name,
+                        category = category,
+                        quantity = quantity,
+                        expire = expire
+                    )
+                )
+            }
+        )
+    }
+}
+
+@Composable
+fun InventoryCardWithCountdown(item: InventoryModel) {
+    var remainingDays by remember { mutableStateOf(TimeUnit.MILLISECONDS.toDays(item.expire - System.currentTimeMillis())) }
+
+    LaunchedEffect(item.expire) {
+        while (remainingDays > 0) {
+            delay(1000) // Update setiap detik
+            remainingDays = TimeUnit.MILLISECONDS.toDays(item.expire - System.currentTimeMillis())
+        }
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(8.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(text = item.name, style = MaterialTheme.typography.titleLarge)
+            Text(text = "Category: ${item.category}", style = MaterialTheme.typography.bodyMedium)
+            Text(text = "Quantity: ${item.quantity}", style = MaterialTheme.typography.bodyMedium)
+            Text(
+                text = "Expire: ${SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(item.expire))}",
+                style = MaterialTheme.typography.bodyMedium
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = if (remainingDays > 0) "Days Remaining: $remainingDays" else "Expired!",
+                color = if (remainingDays > 0) Color.Black else Color.Red,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
+
+@Composable
+fun InventoryCard(inventory: InventoryModel) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(8.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(text = inventory.name, style = MaterialTheme.typography.titleLarge)
+            Text(text = "Category: ${inventory.category}", style = MaterialTheme.typography.bodyMedium)
+            Text(text = "Quantity: ${inventory.quantity}", style = MaterialTheme.typography.bodyMedium)
+            Text(
+                text = "Expire: ${SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(inventory.expire))}",
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
+    }
+}
+
+@Composable
+fun AddInventoryButton(onDismiss: () -> Unit, onAdd: (String, String, String, Long) -> Unit) {
+    var name by remember { mutableStateOf("") }
+    var category by remember { mutableStateOf("") }
+    var quantity by remember { mutableStateOf("") }
+    val calendar = Calendar.getInstance() // Menggunakan Calendar untuk kompatibilitas
+    var expireMillis by remember { mutableStateOf(calendar.timeInMillis) }
+
+    val context = LocalContext.current
+    val datePickerDialog = DatePickerDialog(
+        context,
+        { _, year, month, dayOfMonth ->
+            calendar.set(year, month, dayOfMonth)
+            expireMillis = calendar.timeInMillis
+        },
+        calendar.get(Calendar.YEAR),
+        calendar.get(Calendar.MONTH),
+        calendar.get(Calendar.DAY_OF_MONTH)
+    )
+
+    AlertDialog(
+        onDismissRequest = { onDismiss() },
+        title = { Text("Add Inventory Item") },
+        text = {
+            Column {
+                TextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Name") }
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                TextField(
+                    value = category,
+                    onValueChange = { category = it },
+                    label = { Text("Category") }
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                TextField(
+                    value = quantity,
+                    onValueChange = { quantity = it },
+                    label = { Text("Quantity") }
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Button(
+                    onClick = { datePickerDialog.show() }
+                ) {
+                    Text("Select Expiry Date: ${SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date(expireMillis))}")
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                if (name.isNotBlank() && category.isNotBlank() && quantity.isNotBlank()) {
+                    onAdd(name, category, quantity, expireMillis)
+                    onDismiss()
+                }
+            }) {
+                Text("Save")
+            }
+        },
+        dismissButton = {
+            Button(onClick = { onDismiss() }) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ShoppingScreen(viewModel: ShoppingViewModel = hiltViewModel()) {
+    var searchText by remember { mutableStateOf("") }
+    var showAddDialog by remember { mutableStateOf(false) }
+
+    val shoppingList by viewModel.filteredShopping.collectAsState()
+
+    Scaffold(
+        topBar = {
+            CenterAlignedTopAppBar(
+                title = {
+                    OutlinedTextField(
+                        value = searchText,
+                        onValueChange = {
+                            searchText = it
+                            viewModel.updateSearchQuery(it) // Update ViewModel dengan teks pencarian
+                        },
                         placeholder = { Text("Search...") },
                         leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search Icon") },
                         modifier = Modifier.fillMaxWidth(0.9f),
@@ -175,131 +402,15 @@ fun InventoryScreen() {
         }
     ) { innerPadding ->
         Box(modifier = Modifier.padding(innerPadding)) {
-            if (inventoryList.isEmpty()) {
-                Text("", modifier = Modifier.align(Alignment.Center))
-            } else {
-                LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    items(inventoryList) { item ->
-                        InventoryCard(item)
-                    }
-                }
-            }
-        }
-
-    }
-    if (showAddDialog) {
-        AddInventoryButton(
-            onDismiss = { showAddDialog = false },
-            inventoryList = inventoryList
-        )
-    }
-}
-
-@Composable
-fun InventoryCard(item: String) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 8.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-        shape = RoundedCornerShape(12.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Spacer(modifier = Modifier.width(16.dp))
-
-            Text(
-                text = item,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.weight(1f)
-            )
-
-            IconButton(onClick = { /* to do */ }) {
-                Icon(
-                    imageVector = Icons.Default.Delete,
-                    contentDescription = "More Options"
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun AddInventoryButton(onDismiss: () -> Unit, inventoryList: MutableList<String>) {
-    var newItemInventory by remember { mutableStateOf("") }
-    var newExpireDateInventory by remember { mutableStateOf("") }
-
-    AlertDialog(
-        onDismissRequest = { onDismiss() },
-        title = { Text("Add Ingredient") },
-        text = {
-            Column {
-                TextField(
-                    value = newItemInventory,
-                    onValueChange = { newItemInventory = it },
-                    label = { Text("Enter Ingredient Name") }
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                TextField(
-                    value = newExpireDateInventory,
-                    onValueChange = { newExpireDateInventory = it },
-                    label = { Text("Enter Expiry Date") }
-                )
-            }
-        },
-        confirmButton = {
-            Button(onClick = {
-                if (newItemInventory.isNotBlank()) {
-                    inventoryList.add("$newItemInventory (Expires: $newExpireDateInventory)")
-                    onDismiss()
-                }
-            }) {
-                Text("Save")
-            }
-        },
-        dismissButton = {
-            Button(onClick = { onDismiss() }) {
-                Text("Cancel")
-            }
-        }
-    )
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun ShoppingScreen() {
-    var showAddDialog by remember { mutableStateOf(false) }
-    val shoppingList = remember { mutableStateListOf<String>() }
-
-    Scaffold(
-        topBar = {
-            CenterAlignedTopAppBar(
-                title = {
-                    Button(
-                        onClick = { showAddDialog = true },
-                        shape = RoundedCornerShape(16.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = "Add Item")
-                        Text(" Add Item", modifier = Modifier.padding(start = 8.dp))
-                    }
-                }
-            )
-        }
-    ) { innerPadding ->
-        Box(modifier = Modifier.padding(innerPadding)) {
             if (shoppingList.isEmpty()) {
-                Text("", modifier = Modifier.align(Alignment.Center))
+                Text("No items found", modifier = Modifier.align(Alignment.Center))
             } else {
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
                     items(shoppingList) { item ->
-                        ShoppingCard(item)
+                        ShoppingCard(
+                            item = item,
+                            onDelete = { viewModel.delete(it) } // Menyertakan parameter onDelete
+                        )
                     }
                 }
             }
@@ -309,38 +420,44 @@ fun ShoppingScreen() {
     if (showAddDialog) {
         AddShoppingButton(
             onDismiss = { showAddDialog = false },
-            shoppingList = shoppingList
+            onAdd = { name, quantity ->
+                viewModel.insert(
+                    ShoppingModel(
+                        name = name,
+                        quantity = quantity
+                    )
+                )
+            }
         )
     }
 }
-
 @Composable
-fun AddShoppingButton(onDismiss: () -> Unit, shoppingList: MutableList<String>) {
-    var newitemShopping by remember { mutableStateOf("") }
-    var newquantityShopping by remember { mutableStateOf("") }
+fun AddShoppingButton(onDismiss: () -> Unit, onAdd: (String, String) -> Unit) {
+    var newItem by remember { mutableStateOf("") }
+    var newQuantity by remember { mutableStateOf("") }
 
     AlertDialog(
-        onDismissRequest = { onDismiss() },
+        onDismissRequest = onDismiss,
         title = { Text("Add to Shopping List") },
         text = {
             Column {
                 TextField(
-                    value = newitemShopping,
-                    onValueChange = { newitemShopping = it },
+                    value = newItem,
+                    onValueChange = { newItem = it },
                     label = { Text("Enter Item Name") }
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 TextField(
-                    value = newquantityShopping,
-                    onValueChange = { newquantityShopping = it },
+                    value = newQuantity,
+                    onValueChange = { newQuantity = it },
                     label = { Text("Enter Quantity") }
                 )
             }
         },
         confirmButton = {
             Button(onClick = {
-                if (newitemShopping.isNotBlank()) {
-                    shoppingList.add("$newitemShopping (Quantities: $newquantityShopping)")
+                if (newItem.isNotBlank()) {
+                    onAdd(newItem, newQuantity) // Menyimpan ke database
                     onDismiss()
                 }
             }) {
@@ -348,16 +465,14 @@ fun AddShoppingButton(onDismiss: () -> Unit, shoppingList: MutableList<String>) 
             }
         },
         dismissButton = {
-            Button(onClick = { onDismiss() }) {
+            Button(onClick = onDismiss) {
                 Text("Cancel")
             }
         }
     )
 }
-
 @Composable
-fun ShoppingCard(item: String) {
-
+fun ShoppingCard(item: ShoppingModel, onDelete: (ShoppingModel) -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -372,19 +487,17 @@ fun ShoppingCard(item: String) {
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Spacer(modifier = Modifier.width(16.dp))
-
             Text(
-                text = item,
+                text = "${item.name} (Quantity: ${item.quantity})",
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.weight(1f)
             )
 
-            IconButton(onClick = { /* to do */ }) {
+            IconButton(onClick = { onDelete(item) }) {
                 Icon(
                     imageVector = Icons.Default.Delete,
-                    contentDescription = "More Options"
+                    contentDescription = "Delete Item"
                 )
             }
         }
@@ -393,11 +506,22 @@ fun ShoppingCard(item: String) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RecipeScreen(viewModel: RecipeViewModel = hiltViewModel()) {
+fun RecipeScreen() {
+    val context = LocalContext.current
     var selectedType by remember { mutableStateOf("") }
     var selectedCuisine by remember { mutableStateOf("") }
 
-    val recipesWithIngredients by viewModel.recipesWithIngredients.collectAsState()
+    val allRecipes = remember { JsonUtil.getRecipes(context) }
+
+    // Gunakan derivedStateOf agar filter otomatis diperbarui saat selectedType atau selectedCuisine berubah
+    val filteredRecipes by remember {
+        derivedStateOf {
+            allRecipes.filter { recipe ->
+                (selectedType.isBlank() || recipe.mealType.equals(selectedType, ignoreCase = true)) &&
+                        (selectedCuisine.isBlank() || recipe.cuisine.equals(selectedCuisine, ignoreCase = true))
+            }
+        }
+    }
 
     Scaffold(
         topBar = { CenterAlignedTopAppBar(title = { Text("Recipes") }) }
@@ -423,20 +547,22 @@ fun RecipeScreen(viewModel: RecipeViewModel = hiltViewModel()) {
                 onSelect = { selectedCuisine = it }
             )
             Spacer(modifier = Modifier.height(24.dp))
+
             Button(
-                onClick = { /* to do */ },
+                onClick = { /* Tidak perlu memanggil filterRecipes(), karena derivedStateOf sudah mengatur */ },
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp)
             ) {
                 Text("Generate Recipe")
             }
+
             Spacer(modifier = Modifier.height(8.dp))
 
-            if (recipesWithIngredients.isEmpty()) {
+            if (filteredRecipes.isEmpty()) {
                 Text("No Recipes Found", style = MaterialTheme.typography.bodyMedium)
             } else {
-                LazyColumn(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
-                    items(recipesWithIngredients) { recipeWithIngredient ->
+                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    items(filteredRecipes) { recipe ->
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -446,15 +572,19 @@ fun RecipeScreen(viewModel: RecipeViewModel = hiltViewModel()) {
                         ) {
                             Column(modifier = Modifier.padding(16.dp)) {
                                 Text(
-                                    text = recipeWithIngredient.recipe.recipeName,
+                                    text = recipe.recipeName,
                                     style = MaterialTheme.typography.titleLarge
                                 )
                                 Text(
-                                    text = recipeWithIngredient.recipe.mealType,
-                                    style = MaterialTheme.typography.titleLarge
+                                    text = recipe.mealType,
+                                    style = MaterialTheme.typography.titleMedium
                                 )
                                 Text(
-                                    text = "Ingredient name: ${recipeWithIngredient.ingredients.joinToString { it.name }}",
+                                    text = "Cuisine: ${recipe.cuisine}",
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                                Text(
+                                    text = "Ingredients: ${recipe.ingredientsName.joinToString(", ")}",
                                     style = MaterialTheme.typography.bodyMedium
                                 )
                             }
@@ -526,6 +656,8 @@ fun ProfileScreen() {
 
 @Preview(showBackground = true)
 @Composable
-fun PreviewHomeScreen() {
-    NavigationApp()
+fun GreetingPreview() {
+    RecipeProjectv2Theme {
+        NavigationApp()
+    }
 }

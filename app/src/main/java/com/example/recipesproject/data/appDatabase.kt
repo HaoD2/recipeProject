@@ -25,6 +25,8 @@ abstract class AppDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
+
+
         fun getDatabase(context: Context, scope: CoroutineScope): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -39,7 +41,7 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
     }
-    private class RecipeDatabaseCallback(
+    private class DatabaseCallback(
         private val scope: CoroutineScope
     ) : RoomDatabase.Callback() {
         override fun onCreate(db: SupportSQLiteDatabase) {

@@ -5,9 +5,11 @@ import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import androidx.room.Update
 import com.example.projectreceipt.model.Ingredient
 import com.example.projectreceipt.model.RecipeModel
+import com.example.recipesproject.model.RecipeWithIngredient
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -29,4 +31,8 @@ interface RecipeDao {
 
     @Delete
     suspend fun deleteRecipe(recipeModel: RecipeModel)
+
+    @Transaction
+    @Query("SELECT * FROM recipe")
+    fun getAllRecipesWithIngredient(): Flow<List<RecipeWithIngredient>>
 }

@@ -2,6 +2,7 @@ package com.example.recipesproject.data
 
 import com.example.projectreceipt.model.RecipeModel
 import com.example.recipesproject.data.RecipeDao
+import com.example.recipesproject.model.RecipeWithIngredient
 import kotlinx.coroutines.flow.Flow
 
 class RecipeRespository (private val recipeDao: RecipeDao) {
@@ -14,8 +15,12 @@ class RecipeRespository (private val recipeDao: RecipeDao) {
         return recipeDao.getRecipeById(id)
     }
 
-    fun getAllRecipes(): Flow<List<RecipeModel>> {
-        return recipeDao.getAllRecipes()
+    fun getAllRecipesWithIngredient(): Flow<List<RecipeWithIngredient>> {
+        return recipeDao.getAllRecipesWithIngredient()
+    }
+
+    fun getAllRecipes(): Flow<List<RecipeWithIngredient>> {
+        return recipeDao.getAllRecipesWithIngredient()
     }
 
     suspend fun updateRecipe(recipeModel: RecipeModel) {

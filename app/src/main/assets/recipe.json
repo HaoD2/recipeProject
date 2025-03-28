@@ -1,0 +1,20 @@
+[
+    {
+        "ingredientName": ["Tomato", "Ground Beef", "Garlic", "Onion", "Olive Oil", "Spaghetti", "Salt", "Black Pepper", "Parmesan Cheese"],
+        "recipeMeal": "Spaghetti Bolognese",
+        "recipeCuisine": "Italian",
+        "mealType": "Dinner"
+    },
+    {
+        "ingredientName": ["Chicken", "Coconut Milk", "Curry Powder", "Onion", "Garlic", "Ginger", "Salt", "Chili Powder", "Turmeric"],
+        "recipeMeal": "Chicken Curry",
+        "recipeCuisine": "Indian",
+        "mealType": "Lunch"
+    },
+    {
+        "ingredientName": ["Rice", "Egg", "Garlic", "Shallot", "Soy Sauce", "Sweet Soy Sauce", "Chili", "Chicken", "Salt"],
+        "recipeMeal": "Nasi Goreng",
+        "recipeCuisine": "Indonesian",
+        "mealType": "Breakfast"
+    }
+]

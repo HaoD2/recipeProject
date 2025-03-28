@@ -2,8 +2,9 @@ package com.example.recipesproject.data
 
 import com.example.projectreceipt.model.Ingredient
 import kotlinx.coroutines.flow.Flow
+import javax.inject.Inject
 
-class IngredientRepository(private val ingredientDao: IngredientDao) {
+class IngredientRepository @Inject constructor(private val ingredientDao: IngredientDao) {
 
     suspend fun insertIngredient(ingredient: Ingredient) {
         ingredientDao.insertIngredient(ingredient)

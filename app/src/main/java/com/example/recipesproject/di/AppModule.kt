@@ -3,6 +3,8 @@ package com.example.recipesproject.di
 import android.content.Context
 import androidx.room.Room
 import com.example.recipesproject.data.AppDatabase
+import com.example.recipesproject.data.IngredientDao
+import com.example.recipesproject.data.IngredientRepository
 import com.example.recipesproject.data.RecipeDao
 import com.example.recipesproject.data.RecipeRespository
 import com.example.recipesproject.data.UsersDao
@@ -55,5 +57,15 @@ object AppModule {
     @Singleton
     fun provideUserRepository(usersDao: UsersDao): UsersRepository {
         return UsersRepository(usersDao)
+    }
+
+    @Provides
+    @Singleton
+    fun provideIngredientRepository(ingredientDao: IngredientDao): IngredientRepository {
+        return IngredientRepository(ingredientDao)
+    }
+    @Provides
+    fun provideIngredientDao(database: AppDatabase): IngredientDao {
+        return database.ingredientDao()
     }
 }
